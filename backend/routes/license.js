@@ -2,7 +2,7 @@
 router.post('/admin/activate', (req, res) => {
   const { schoolId, months, key } = req.body;
   // Replace with your own secret key (keep it safe)
-  if (key !== 'YOUR_SUPER_SECRET_KEY_2025') {
+  if (key !== 'NobelKirui') {
     return res.status(403).json({ error: 'Unauthorized' });
   }
   if (!schoolId || !months) {
