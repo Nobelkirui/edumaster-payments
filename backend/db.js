@@ -1,11 +1,20 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
-const db = new Database(path.join(__dirname, 'data.db'));
+const DB_PATH = path.join(__dirname, 'data.db');
+let db = null;
 
-function initDB() {
-  db.exec(`
+async function initDB() {
+  let fileBuffer = null;
+  if (fs.existsSync(DB_PATH)) {
+    fileBuffer = fs.readFileSync(DB_PATH);
+  }
+  const SQL = await initSqlJs();
+  db = new SQL.Database(fileBuffer);
+
+  // Create tables if they don't exist
+  db.run(`
     CREATE TABLE IF NOT EXISTS schools (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -13,7 +22,9 @@ function initDB() {
       subscription_status TEXT DEFAULT 'trial',
       subscription_expiry TEXT,
       created_at TEXT
-    );
+    )
+  `);
+  db.run(`
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
       school_id TEXT,
@@ -21,18 +32,46 @@ function initDB() {
       reference TEXT UNIQUE,
       status TEXT,
       created_at TEXT
-    );
+    )
   `);
 
-  // Add a default trial record for a demo school (optional)
-  const demoId = 'demo_school';
-  const existing = db.prepare('SELECT id FROM schools WHERE id = ?').get(demoId);
-  if (!existing) {
-    const trialExpiry = new Date();
-    trialExpiry.setDate(trialExpiry.getDate() + 14);
-    db.prepare(`INSERT INTO schools (id, name, email, subscription_status, subscription_expiry, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)`).run(demoId, 'Demo School', 'demo@example.com', 'trial', trialExpiry.toISOString(), new Date().toISOString());
+  // Save the database to disk after any write operation
+  saveDB();
+}
+
+function saveDB() {
+  if (db) {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_PATH, buffer);
   }
 }
 
-module.exports = { db, initDB };
+// Helper to run queries and return results as objects
+function query(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const results = [];
+  while (stmt.step()) results.push(stmt.getAsObject());
+  stmt.free();
+  return results;
+}
+
+function run(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  stmt.step();
+  stmt.free();
+  saveDB();
+}
+
+function get(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  let result = null;
+  if (stmt.step()) result = stmt.getAsObject();
+  stmt.free();
+  return result;
+}
+
+module.exports = { initDB, query, run, get, saveDB };
