@@ -13,7 +13,6 @@ async function initDB() {
   const SQL = await initSqlJs();
   db = new SQL.Database(fileBuffer);
 
-  // Create tables if they don't exist
   db.run(`
     CREATE TABLE IF NOT EXISTS schools (
       id TEXT PRIMARY KEY,
@@ -34,8 +33,6 @@ async function initDB() {
       created_at TEXT
     )
   `);
-
-  // Save the database to disk after any write operation
   saveDB();
 }
 
@@ -47,7 +44,6 @@ function saveDB() {
   }
 }
 
-// Helper to run queries and return results as objects
 function query(sql, params = []) {
   const stmt = db.prepare(sql);
   stmt.bind(params);
