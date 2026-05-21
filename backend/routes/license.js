@@ -44,7 +44,7 @@ router.post('/paylink', (req, res) => {
 
   const payload = {
     email,
-    amount: amount * 100,
+    amount: amount * 1000,
     currency: 'KES',
     reference,
     metadata: { school_id: schoolId, plan },
