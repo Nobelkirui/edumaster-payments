@@ -1,73 +1,59 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-const path = require('path');
+// db.js — uses better-sqlite3 (synchronous, fast, no async needed)
+// This fixes the mismatch between sql.js (async) and better-sqlite3 (sync) APIs
 
-const DB_PATH = path.join(__dirname, 'data.db');
+const Database = require('better-sqlite3');
+const path     = require('path');
+const fs       = require('fs');
+
+const DATA_DIR = path.join(__dirname, 'data');
+const DB_PATH  = path.join(DATA_DIR, 'edumaster.db');
+
 let db = null;
 
-async function initDB() {
-  let fileBuffer = null;
-  if (fs.existsSync(DB_PATH)) {
-    fileBuffer = fs.readFileSync(DB_PATH);
+function initDB() {
+  // Ensure data directory exists
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
   }
-  const SQL = await initSqlJs();
-  db = new SQL.Database(fileBuffer);
 
-  db.run(`
+  db = new Database(DB_PATH);
+
+  // Enable WAL mode for better performance
+  db.pragma('journal_mode = WAL');
+
+  // Create tables
+  db.exec(`
     CREATE TABLE IF NOT EXISTS schools (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      email TEXT,
-      subscription_status TEXT DEFAULT 'trial',
+      id                  TEXT PRIMARY KEY,
+      name                TEXT NOT NULL,
+      email               TEXT,
+      subscription_status TEXT DEFAULT 'inactive',
       subscription_expiry TEXT,
-      created_at TEXT
-    )
-  `);
-  db.run(`
+      payment_reference   TEXT,
+      updated_at          TEXT,
+      created_at          TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS payments (
-      id TEXT PRIMARY KEY,
-      school_id TEXT,
-      amount INTEGER,
-      reference TEXT UNIQUE,
-      status TEXT,
-      created_at TEXT
-    )
+      id          TEXT PRIMARY KEY,
+      school_id   TEXT NOT NULL,
+      amount      INTEGER,
+      reference   TEXT UNIQUE,
+      plan        TEXT,
+      status      TEXT DEFAULT 'success',
+      created_at  TEXT NOT NULL,
+      FOREIGN KEY (school_id) REFERENCES schools(id)
+    );
   `);
-  saveDB();
+
+  console.log('Database initialised at', DB_PATH);
+  return Promise.resolve(); // keep async interface for server.js
 }
 
-function saveDB() {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
-  }
+// Export db accessor — used by routes
+function getDB() {
+  if(!db) throw new Error('Database not initialised. Call initDB() first.');
+  return db;
 }
 
-function query(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const results = [];
-  while (stmt.step()) results.push(stmt.getAsObject());
-  stmt.free();
-  return results;
-}
-
-function run(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  stmt.step();
-  stmt.free();
-  saveDB();
-}
-
-function get(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  let result = null;
-  if (stmt.step()) result = stmt.getAsObject();
-  stmt.free();
-  return result;
-}
-
-module.exports = { initDB, query, run, get, saveDB };
+module.exports = { initDB, getDB };
